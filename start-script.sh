@@ -40,6 +40,46 @@
 # 2023-07-02T12:04:13.844183Z  WARN mountpoint_s3_client::s3_crt_client: meta request failed duration=204.765857297s request_result=MetaRequestResult { response_status: 0, crt_error: Error(2073, "aws-c-http: AWS_ERROR_HTTP_CHANNEL_THROUGHPUT_FAILURE, Http connection channel shut down due to failure to meet throughput minimum"), error_response_headers: None, error_response_body: None }
 # 2023-07-02T12:04:13.844576Z ERROR mountpoint_s3::fs: write failed: put request failed
 
+UUID=$(cat /proc/sys/kernel/random/uuid)
+DT=$(date +"%Y-%m-%d")
+mkdir -p $LOGROTATE_ARCHIVE
+touch $LOGROTATE_STATE
+chmod o-rw $LOGROTATE_STATE
+
+cat <<EOT >> $LOGROTATE_CONF
+$LOGROTATE_APP_LOG_FILE {
+    #firstaction
+    #    echo "start rotation \$(date)" >> /tmp/rotation.log
+    #endscript
+
+    rotate 10
+    hourly
+    maxsize 25M
+    maxage 3
+    create
+    notifempty
+    missingok
+    dateext
+    dateformat -%Y-%m-%d-%s.log
+
+    olddir $LOGROTATE_ARCHIVE
+    postrotate
+        [ -d "$S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID" ] && echo "Directory $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID exists." || echo "Creating: Directory $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID..."; mkdir -p $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID
+        cp $LOGROTATE_ARCHIVE/*.log $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID
+    endscript
+
+    #lastaction
+    #    echo "complete rotation \$(date)" >> /tmp/rotation.log
+    #endscript
+}
+EOT
+
+touch /etc/cron.d/logrotate-cron
+echo "$LOGROTATE_FREQUENCY /usr/sbin/logrotate $LOGROTATE_CONF --state $LOGROTATE_STATE" >> /etc/cron.d/logrotate-cron
+chmod 0644 /etc/cron.d/logrotate-cron
+crontab /etc/cron.d/logrotate-cron
+service cron start
+
 cat <<EOT >> ~/.aws/credentials
 [default]
 aws_access_key_id = $AWS_ACCESS_KEY
