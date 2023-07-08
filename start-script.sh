@@ -40,49 +40,66 @@
 # 2023-07-02T12:04:13.844183Z  WARN mountpoint_s3_client::s3_crt_client: meta request failed duration=204.765857297s request_result=MetaRequestResult { response_status: 0, crt_error: Error(2073, "aws-c-http: AWS_ERROR_HTTP_CHANNEL_THROUGHPUT_FAILURE, Http connection channel shut down due to failure to meet throughput minimum"), error_response_headers: None, error_response_body: None }
 # 2023-07-02T12:04:13.844576Z ERROR mountpoint_s3::fs: write failed: put request failed
 
-UUID=$(cat /proc/sys/kernel/random/uuid)
-DT=$(date +"%Y-%m-%d")
-mkdir -p $LOGROTATE_ARCHIVE
-touch $LOGROTATE_STATE
-chmod o-rw $LOGROTATE_STATE
+# oc adm policy add-scc-to-user -z default privileged -n arrow-ops-quarkus-stg
 
-cat <<EOT >> $LOGROTATE_CONF
+
+if [[ -z "${SIDECAR_LOG_MONITORING_ENABLED}" ]]; then
+    echo "SIDECAR_LOG_MONITORING_ENABLED not set"
+    echo "SideCar Log Monitoring Status: Disabled"
+    sleep infinity
+fi
+
+if [[ "${SIDECAR_LOG_MONITORING_ENABLED}" != "true" ]]; then
+    echo "SideCar Log Monitoring Status: Disabled"
+    sleep infinity
+else
+    echo "SideCar Log Monitoring Status: Enabled"
+    UUID=$(cat /proc/sys/kernel/random/uuid)
+    DT=$(date +"%Y-%m-%d")
+    mkdir -p $LOGROTATE_ARCHIVE
+    touch $LOGROTATE_STATE
+    chmod o-rw $LOGROTATE_STATE
+
+    [ -d "$S3_MOUNT_DIRECTORY" ] && echo "Directory $S3_MOUNT_DIRECTORY exists." || echo "Creating: Directory $S3_MOUNT_DIRECTORY..."; mkdir -p $S3_MOUNT_DIRECTORY
+
+cat <<EOT >> /etc/logrotate.d/$APP_LABEL.conf
 $LOGROTATE_APP_LOG_FILE {
     #firstaction
     #    echo "start rotation \$(date)" >> /tmp/rotation.log
     #endscript
-
-    rotate 10
-    hourly
-    maxsize 25M
+    rotate $LOGROTATE_APP_LOG_RETAIN
+    $LOGROTATE_DURATION
+    maxsize $LOGROTATE_MAXSIZE
     maxage 3
-    create
+    copytruncate
     notifempty
     missingok
     dateext
     dateformat -%Y-%m-%d-%s.log
-
     olddir $LOGROTATE_ARCHIVE
+    sharedscripts
     postrotate
-        [ -d "$S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID" ] && echo "Directory $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID exists." || echo "Creating: Directory $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID..."; mkdir -p $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID
-        cp $LOGROTATE_ARCHIVE/*.log $S3_MOUNT_DIRECTORY$LOGROTATE_ARCHIVE/$DT-$UUID
+        [ -d "$S3_MOUNT_DIRECTORY/$APP_LABEL/$DT" ] && echo "Directory $S3_MOUNT_DIRECTORY/$APP_LABEL/$DT exists." || echo "Creating: Directory $S3_MOUNT_DIRECTORY/$APP_LABEL/$DT..."; mkdir -p $S3_MOUNT_DIRECTORY/$APP_LABEL/$DT
+        cp $LOGROTATE_ARCHIVE/*.log $S3_MOUNT_DIRECTORY/$APP_LABEL/$DT
+        rm $LOGROTATE_ARCHIVE/*.log
     endscript
-
     #lastaction
     #    echo "complete rotation \$(date)" >> /tmp/rotation.log
     #endscript
 }
 EOT
 
-touch /etc/cron.d/logrotate-cron
-echo "$LOGROTATE_FREQUENCY /usr/sbin/logrotate $LOGROTATE_CONF --state $LOGROTATE_STATE" >> /etc/cron.d/logrotate-cron
-chmod 0644 /etc/cron.d/logrotate-cron
-crontab /etc/cron.d/logrotate-cron
-service cron start
+    touch /etc/cron.d/logrotate-cron
+    echo "$LOGROTATE_FREQUENCY /usr/sbin/logrotate /etc/logrotate.d/$APP_LABEL.conf --state $LOGROTATE_STATE" >> /etc/cron.d/logrotate-cron
+    # echo "$LOGROTATE_FREQUENCY /usr/sbin/logrotate -f /etc/logrotate.d/$APP_LABEL.conf" >> /etc/cron.d/logrotate-cron
+    chmod 0644 /etc/cron.d/logrotate-cron
+    crontab /etc/cron.d/logrotate-cron
+    service cron start
 
 cat <<EOT >> ~/.aws/credentials
 [default]
 aws_access_key_id = $AWS_ACCESS_KEY
 aws_secret_access_key = $AWS_SECRET_ACCESS_KEY
 EOT
-mount-s3 -f $S3_BUCKET_NAME $S3_MOUNT_DIRECTORY --prefix $S3_PATH --allow-other --dir-mode 0755 --file-mode 0755 --thread-count $FUSE_THREAD_COUNT --throughput-target-gbps $FUSE_THROUGHPUT_TARGET_GBPS
+    mount-s3 -f $S3_BUCKET_NAME $S3_MOUNT_DIRECTORY --prefix $S3_PATH --allow-other --dir-mode 0755 --file-mode 0755 --thread-count $FUSE_THREAD_COUNT --throughput-target-gbps $FUSE_THROUGHPUT_TARGET_GBPS
+fi
