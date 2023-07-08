@@ -43,7 +43,7 @@ fallocate -l $((26*1024*1024)) my-app.log
 mkfile -n 1g my-app.log
 ```
 
-## RUN
+## Runtime Exec
 ```sh
 docker exec -it s3fs /bin/bash
 ```
