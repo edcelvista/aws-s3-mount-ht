@@ -10,8 +10,8 @@ Install the dependencies and devDependencies and start the server.
 ```sh
 docker rm s3fs --force && docker run --privileged -d -t -i \
 -e SIDECAR_LOG_MONITORING_ENABLED='true' \
--e AWS_ACCESS_KEY_ID='AKIAQYRJMDZZQMY2VSGQ' \
--e AWS_SECRET_ACCESS_KEY='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' \
+-e AWS_ACCESS_KEY_ID='<omitted>' \
+-e AWS_SECRET_ACCESS_KEY='<omitted>' \
 -e AWS_DEFAULT_REGION='us-east-1' \
 -e S3_MOUNT_DIRECTORY='/mnt' \
 -e S3_BUCKET_NAME='edcelvistadotcom' \
