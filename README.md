@@ -5,8 +5,14 @@ Mount your s3 bucket as normal mountpoint in unix / linux operating system.
 
 ## Docker Setup
 
-Install the dependencies and devDependencies and start the server.
+Install and build container image and run the module.
 
+```sh
+docker build . 
+docker tag <image> s3fs:latest
+```
+
+## Docker Run
 ```sh
 docker rm s3fs --force && docker run --privileged -d -t -i \
 -e SIDECAR_LOG_MONITORING_ENABLED='true' \
